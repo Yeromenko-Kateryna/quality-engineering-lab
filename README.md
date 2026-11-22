@@ -2,6 +2,8 @@
 
 QEL-1 provides a read-only TypeScript/Fastify application for controlled quality engineering checks. It serves an immutable synthetic catalogue and uses no external application services or persistent storage.
 
+QEL-2 adds a local k6 HTTP smoke for the search API.
+
 ## Build and start
 
 Use Docker with a Linux engine and the Compose plugin supporting `up --wait --wait-timeout`. The build fetches the pinned Node 24.15.0 image and installs dependencies from the npm lockfile. Run the PowerShell commands below from the repository root. Use a new project name for each independent run.
@@ -81,3 +83,40 @@ The final two listings should be empty. Use the internal network for runtime che
 ## Verification scope
 
 Local verification used Docker Desktop 4.99.0 with Linux engine 29.9.3 and Compose 5.7.0. The internal probe reached the SUT and could not reach the same disposable outside-network listener that a positive-control probe reached. The HTML checks used emitted markup and HTTP headers. The delay observations verified the switch's effect on individual responses. Browser automation, load benchmarks, scanner runs and hosted CI are outside QEL-1.
+
+## Run the k6 search smoke
+
+Use PowerShell 7.4 or later and the Docker prerequisites above. Run from the repository root in a shell without `LAB_*` overrides, including in the Compose environment file. Pull the pinned runner before starting the isolated runtime.
+
+```powershell
+$project = "qel2-$([guid]::NewGuid().ToString('N'))"
+docker pull ghcr.io/grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8
+if ($LASTEXITCODE -ne 0) { throw 'k6 image pull failed' }
+docker compose -p $project build sut
+if ($LASTEXITCODE -ne 0) { throw 'SUT build failed' }
+docker compose -p $project up --no-build --wait --wait-timeout 20 sut
+if ($LASTEXITCODE -ne 0) { throw 'SUT did not become ready' }
+
+& ./performance/Invoke-SearchSmoke.ps1 -Project $project -Query notebook
+$positiveExit = $LASTEXITCODE
+& ./performance/Invoke-SearchSmoke.ps1 -Project $project -Query compass
+$negativeExit = $LASTEXITCODE
+& ./performance/Invoke-SearchSmoke.ps1 -Project $project -Query notebook
+$recoveryExit = $LASTEXITCODE
+```
+
+The runner joins only the labeled, internal `lab` network of the supplied project. One virtual user runs `GET http://sut:3000/api/search` for 10 seconds with a one-second minimum iteration duration and a two-second request timeout. Each response must be HTTP 200 with a JSON content type, valid JSON, an `items` array and both notebook IDs. The functional thresholds require every check to pass and zero HTTP failures.
+
+`compass` is a valid query that returns an empty array. The same notebook-ID checks fail, demonstrating assertion sensitivity. This result gives no evidence of a SUT defect or performance regression.
+
+Each invocation creates a fresh ignored directory under `logs/<project>/<query>-<id>/`. Completed runs retain the native `summary.json`, k6 output in `k6.log`, exact runner arguments in `invocation.json` and the local decision in `result.json`.
+
+| Wrapper exit | Decision | Required evidence |
+| --- | --- | --- |
+| `0` | `PASS` | Native k6 exit `0`, valid summary, completed requests and passing functional thresholds |
+| `1` | `FAIL` | Native k6 exit `99` with valid evidence of a functional threshold violation on received HTTP responses |
+| `2` | `TOOL_ERROR` | Readiness, transport, runner or evidence error. If readiness fails, the wrapper records a diagnostic and k6 does not start. |
+
+Inspect and remove the owned project as shown in **Stop the owned project**. The wrapper removes its disposable runner on exit, and the host reports survive Compose teardown.
+
+No calibrated p95 threshold exists. This smoke supports no production-capacity claim. Hosted GitHub Actions validation is outside QEL-2.
