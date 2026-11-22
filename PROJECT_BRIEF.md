@@ -1,9 +1,9 @@
 # Quality Engineering Lab — Project Brief
 
-**Status:** Architecture accepted; implementation not started  
-**Architecture:** `docs/architecture/QEL_ARCHITECTURE_IMPLEMENTATION_PLAN_v0.2.md`  
-**Review:** Independent Architecture Delta Review, 2026-11-22 — `ACCEPT`, `ARCHITECTURE_READY = YES` (design-level only)  
-**Audience:** Junior QA Automation / Junior SDET reviewers in Germany/DACH and remote EU
+- **Status** — QEL-1 through QEL-6 accepted. QEL-7 portfolio close is under local review, with final hosted acceptance pending.
+- **Architecture** — [Accepted technical contract v0.2](docs/architecture/QEL_ARCHITECTURE_IMPLEMENTATION_PLAN_v0.2.md)
+- **Review** — Independent Architecture Delta Review, 2026-11-22, `ACCEPT`, `ARCHITECTURE_READY = YES` (design-level only).
+- **Audience** — Junior QA Automation / Junior SDET reviewers in Germany/DACH and remote EU.
 
 > The architecture file is the unchanged v0.2 artifact and retains its pre-review header (`PROPOSED — DELTA REVIEW REQUIRED`). The later independent delta review accepted all five mandatory changes. This brief records that later decision; it does not modify or supersede the technical contracts in v0.2.
 
@@ -33,13 +33,13 @@ SUT-only, validated at startup and safe by default:
 - `LAB_A11Y_DEFECT` — removes the accessible name of the designated search input.
 - `LAB_SECURITY_DEFECT` — removes the applicable CSP response header from HTML pages.
 
-These switches must **never** control test assertions, thresholds, or report interpretation. Later k6, axe, and HTTP checks observe public HTTP/DOM behavior independently.
+These switches must **never** control test assertions, thresholds, or report interpretation. The k6, axe, and HTTP checks observe public HTTP and DOM behavior independently.
 
-## Intended quality dimensions
+## Implemented quality dimensions
 
-| Dimension | Planned verification | Claim boundary |
+| Dimension | Verification | Claim boundary |
 |---|---|---|
-| Performance | k6 smoke, calibrated baseline, controlled regression | No production-capacity claims from shared CI |
+| Performance | Required functional k6 smoke and separate local baseline calibration | No approved numerical latency threshold or production-capacity claim |
 | Accessibility | Playwright + axe-core and selected keyboard/focus tests | Automated checks do not prove WCAG conformance |
 | Security | CSP assertions, scoped passive ZAP Baseline, npm audit | No pentest/certification or arbitrary public scans |
 | CI/evidence | Compose lifecycle, GitHub Actions, five-state outcomes, validated receipts | Code/config alone is not execution evidence |
@@ -57,17 +57,17 @@ These switches must **never** control test assertions, thresholds, or report int
 
 - **QEL-0 — ACCEPTED:** design v0.2 accepted by independent delta review on 2026-11-22 (5/5 changes, zero mandatory architecture blockers).
 - **QEL-0.5 — LOCAL SETUP:** user created `Yeromenko-Kateryna/quality-engineering-lab` and cloned it locally; initial README and `.gitignore` exist.
-- **QEL-1 — NEXT, NOT STARTED:** minimal runnable SUT, Docker Compose, observable safe switches, health and read-only routes, bounded isolation/cleanup checks.
-- **QEL-2–4 — LATER:** k6, accessibility, and security verticals.
-- **QEL-5–7 — LATER:** CI/evidence, controlled regression, employer-facing acceptance.
-
-## QEL-1 acceptance boundary
-
-For QEL-1, prove with actual commands and observed results: fresh build, Compose startup/health, deterministic API + HTML behavior, invalid-config startup failure, observable SUT-only defect behavior, network restrictions under the tested Docker setup, independent Compose projects, and owner-scoped cleanup. **Do not** implement k6, axe, ZAP, CI result adapters, or a new architecture during QEL-1.
+- **QEL-1 — ACCEPTED:** runnable SUT, safe configuration switches, internal Compose network and scoped cleanup.
+- **QEL-2 through QEL-4 — ACCEPTED:** k6 smoke, accessibility and keyboard checks, CSP checks, scoped passive ZAP and npm audit. The QEL-4 revision added the `nosniff` response hook after triage of rule `10021`.
+- **QEL-5 — ACCEPTED:** hosted CI-G01, native evidence and receipts, with the QEL-5R shared-image teardown correction.
+- **QEL-6 — ACCEPTED:** local controlled regressions and performance eligibility. PERF-G02 remains optional and the local qualification decision is `INCONCLUSIVE`.
+- **QEL-7 — PORTFOLIO CLOSE:** documentation and local verification, followed by separate Coordinator acceptance at the published documentation revision.
 
 ## Portfolio definition of done
 
 QEL can be called portfolio-ready only after an independently reproducible SUT and quality checks, approved measurable gates, actual revision-bound CI and native reports, at least one real baseline → injected FAIL → recovery PASS case, documented triage, and honest limitations. Portfolio readiness does not mean production release.
+
+The [Portfolio DoD](docs/portfolio-dod.md) records evidence and remaining conditions for each criterion.
 
 ## Stop conditions and authority
 
@@ -75,5 +75,4 @@ The owner approves external publication/remote mutation, privileged access, dest
 
 ## Current evidence status
 
-**FACT:** repository created/cloned according to the user's PowerShell log; architecture review `ACCEPT` per supplied delta review.  
-**UNKNOWN / NOT RUN:** SUT implementation, Docker verification, network tests, k6/axe/ZAP, CI runs, thresholds, findings, artifacts. No claims of executable completion are authorized yet.
+Hosted run `45060111440`, attempt `1`, verified CI-G01 at `a18f6d6517235f5a89e8717f11ceb94165e51913`. Artifact `14769122504` was independently retrieved on 2026-11-22. The [evidence index](evidence/README.md) records native archive availability, the local regression and calibration runs, and their claim boundaries. Final hosted verification of the QEL-7 documentation revision is `NOT_RUN`.
