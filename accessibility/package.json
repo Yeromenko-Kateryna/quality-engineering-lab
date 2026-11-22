@@ -1,0 +1,12 @@
+{
+  "name": "quality-engineering-lab-accessibility",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "axe-core": "4.11.1"
+  }
+}

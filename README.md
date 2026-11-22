@@ -4,6 +4,8 @@ QEL-1 provides a read-only TypeScript/Fastify application for controlled quality
 
 QEL-2 adds a local k6 HTTP smoke for the search API.
 
+QEL-3 adds Chromium accessibility and keyboard checks for the catalogue and search pages.
+
 ## Build and start
 
 Use Docker with a Linux engine and the Compose plugin supporting `up --wait --wait-timeout`. The build fetches the pinned Node 24.15.0 image and installs dependencies from the npm lockfile. Run the PowerShell commands below from the repository root. Use a new project name for each independent run.
@@ -120,3 +122,24 @@ Each invocation creates a fresh ignored directory under `logs/<project>/<query>-
 Inspect and remove the owned project as shown in **Stop the owned project**. The wrapper removes its disposable runner on exit, and the host reports survive Compose teardown.
 
 No calibrated p95 threshold exists. This smoke supports no production-capacity claim. Hosted GitHub Actions validation is outside QEL-2.
+
+## Run the accessibility checks
+
+Use PowerShell 7.4+, Git, Docker with a Linux engine, and Compose with `up --wait`. Run from the repository root.
+
+```powershell
+& ./accessibility/Invoke-AccessibilityChecks.ps1
+$LASTEXITCODE
+```
+
+The runner builds the digest-pinned Playwright 1.58.2 Noble image and installs Playwright Test 1.58.2 and axe-core 4.11.1 from the npm lockfile before starting any runtime instance. It then starts separate named Compose projects for baseline, injected missing name and recovery, in that order. Each browser joins only its project's internal `lab` network and writes reports to its own host directory. The orchestration sets all three SUT switches explicitly for each profile. The browser receives no switch configuration.
+
+The suite visits Catalogue, Search, matching results, empty results and the HTTP 400 invalid-input page. It checks rendered feedback and the search input's accessible name. A separate test tabs through the links, field and submit button, types `notebook`, presses Enter, and records focus before and after native GET navigation. It checks Chromium’s keyboard-focus outline without requiring the results page to take focus at a specific element.
+
+axe runs the default full-document rules. Serious and critical violations and mandatory browser assertion failures block the run. Moderate and minor findings and axe's incomplete checks remain in the reports. Playwright evaluates the bundled axe source inside Chromium. Browser CSP bypass is disabled, and the test retains the actual response header. This instrumentation evaluates the rendered document and does not validate whether the page can load or execute its own scripts.
+
+Each run writes to ignored `logs/qel3-<id>/`. The three profile folders contain native `playwright.json`, individual `axe-*.json` scans, response and focus observations, and `result.json` with the native exit and local classification. `execution.txt` records versions, exact Docker commands, readiness and cleanup. The wrapper exits `0` for a verified PASS → FAIL → PASS sequence, `1` for a completed sequence that misses the expected demonstration, or `2` for a tooling or evidence error. The injected run retains its native failing result.
+
+The wrapper cleans up each owned project before starting the next and removes its runner image after the sequence. Reports stay on the host. If the wrapper is forcibly interrupted, use the project identities in `execution.txt` and verify ownership labels before scoped cleanup.
+
+Coverage is limited to automated axe rules and the documented Chromium keyboard and focus checks. It provides no general WCAG conformance result, cross-browser coverage or screen-reader testing.
