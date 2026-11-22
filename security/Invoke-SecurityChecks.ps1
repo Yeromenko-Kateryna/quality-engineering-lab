@@ -64,14 +64,23 @@ function Owned-Resources([string]$Project) {
     (Docker @('network','ls','-q','--filter',"label=com.docker.compose.project=$Project")).lines
 }
 
+function Get-LocalSutTag([string]$Project) {
+    $tag = "$Project-sut:latest"
+    (Docker @('image','ls','--filter',"reference=$tag",'--format','{{.Repository}}:{{.Tag}}')).lines |
+        Where-Object { $_ -ceq $tag }
+}
+
 function Remove-Profile([string]$Project) {
     $extras = (Docker @('ps','-aq','--filter',"label=com.docker.compose.project=$Project",'--filter',"label=qel.run=$run")).lines
     if ($extras) { $null = Docker (@('rm','-f') + $extras) }
     $front = (Docker @('network','ls','-q','--filter',"label=com.docker.compose.project=$Project",'--filter',"label=qel.run=$run")).lines
     if ($front) { $null = Docker (@('network','rm') + $front) }
     $null = Owned-Resources $Project
-    $null = Docker @('compose','-p',$Project,'down','--rmi','local')
-    Confirm (!(Owned-Resources $Project) -and !(Docker @('image','ls','-q','--filter',"reference=$Project-sut")).lines) "Owned resources removed for $Project"
+    $null = Docker @('compose','-p',$Project,'down')
+    Confirm (!(Owned-Resources $Project)) "Owned containers and networks removed for $Project"
+    $tag = Get-LocalSutTag $Project
+    if ($tag) { Write-Host "Project $Project retained local SUT tag $tag." }
+    else { Write-Host "Project $Project has no local SUT tag after teardown." }
     $null = $projects.Remove($Project)
 }
 
@@ -169,7 +178,7 @@ try {
     $env:LAB_A11Y_DEFECT = 'false'
     foreach ($profile in $profiles.Keys) {
         $project = "$run-$profile"
-        Confirm (!(Owned-Resources $project) -and !(Docker @('image','ls','-q','--filter',"reference=$project-sut")).lines) "Fresh Compose identity $project"
+        Confirm (!(Owned-Resources $project) -and !(Get-LocalSutTag $project)) "Fresh Compose identity $project"
         $projects.Add($project)
         $env:LAB_SECURITY_DEFECT = $profiles[$profile]
         $null = Docker @('compose','-p',$project,'build','sut')

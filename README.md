@@ -144,7 +144,7 @@ axe runs the default full-document rules. Serious and critical violations and ma
 
 Each run writes to ignored `logs/qel3-<id>/`. The three profile folders contain native `playwright.json`, individual `axe-*.json` scans, response and focus observations, and `result.json` with the native exit and local classification. `execution.txt` records versions, exact Docker commands, readiness and cleanup. The wrapper exits `0` for a verified PASS → FAIL → PASS sequence, `1` for a completed sequence that misses the expected demonstration, or `2` for a tooling or evidence error. The injected run retains its native failing result.
 
-The wrapper cleans up each owned project before starting the next and removes its runner image after the sequence. Reports stay on the host. If the wrapper is forcibly interrupted, use the project identities in `execution.txt` and verify ownership labels before scoped cleanup.
+The wrapper removes each owned project's containers and networks before starting the next. It removes its separately built, run-labeled browser image after the sequence. Reports stay on the host. If the wrapper is forcibly interrupted, use the project identities in `execution.txt` and verify ownership labels before scoped cleanup.
 
 Coverage is limited to automated axe rules and the documented Chromium keyboard and focus checks. It provides no general WCAG conformance result, cross-browser coverage or screen-reader testing.
 
@@ -171,7 +171,7 @@ Evidence stays under ignored `logs/qel4-<id>/`. Each profile contains HTTP obser
 
 ZAP exit `0` means successful baseline completion, `1` a configured FAIL-level alert, `2` warnings, and `3` an execution error. The local validator requires evidence in addition to the native exit. It records unresolved findings as `INCONCLUSIVE`; missing or corrupt outputs and failed tool execution are `TOOL_ERROR`. The wrapper exits `0` for a completed gate with no unresolved policy dispositions, `1` when findings need review, and `2` for incomplete or failed verification. The expected injected CSP failure retains its own exit `1` and `FAIL`.
 
-The runner checks labels before removing its scanner, guard, internal networks, SUT containers and local SUT image tags. The pinned base images remain in the local cache. Reports survive teardown.
+The runner verifies project ownership when removing its scanner, guard, internal networks and SUT containers. It verifies that the owned containers and networks are gone before moving on to the mandatory audit. Reports survive teardown.
 
 This limited security baseline provides no penetration-test result or security certification.
 
@@ -205,4 +205,10 @@ Each execution writes to an ignored `logs/qel5-<namespace>/bundle/`. `native/` h
 
 After ordinary test failures the workflow still prepares and uploads the bundle with 14-day retention and missing-file behavior set to `error`. The final `CI-G01` step requires a successful upload and matching action-provided artifact ID and URL. It records the decision and publication outputs in the workflow summary. Independent retrieval is a separate verification step. Local commands return the local validation result and record publication as `NOT_RUN`.
 
-Names are derived from GitHub run, attempt and job identity or a local UUID. Cleanup checks known project names and Docker ownership labels before removing residual resources, and runs even after ordinary failures. Immediate runner termination may prevent cleanup. No calibrated latency result, WCAG conformance, broad security certification or hosted acceptance is implied by local output.
+Names are derived from GitHub run, attempt and job identity or a local UUID. Cleanup checks known project names and Docker ownership labels before removing residual containers and networks, then verifies their absence. It runs even after ordinary failures. Immediate runner termination may prevent cleanup.
+
+Accessibility, security and CI teardown retain exact project SUT build tags and record their presence. Different Compose tags can point to the same image ID and layers, and the image can lack project labels. A preexisting exact tag blocks reuse of a run name. Retained tags can accumulate on persistent Docker hosts. A failed container or network removal still blocks the run.
+
+The original hosted attempt recorded passing Playwright, CSP and ZAP checks. The wrappers treated a surviving SUT tag as a cleanup failure, so security stopped before npm audit. Central cleanup also rejected the shared image because it lacked Compose labels. The original run and artifact `14766047158` record that CI-G01 `TOOL_ERROR`. A fresh, separately authorized hosted run must verify the corrected Ubuntu lifecycle, native reports and artifact publication. [Original GitHub Actions run](https://github.com/Yeromenko-Kateryna/quality-engineering-lab/actions/runs/45051969856)
+
+Local output provides no calibrated latency result, WCAG conformance, broad security certification or hosted acceptance.

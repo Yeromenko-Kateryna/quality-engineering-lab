@@ -5,6 +5,7 @@ import { dirname, join, relative } from 'node:path';
 import { test } from 'node:test';
 import { csp, origin, responseStatuses } from '../security/scope.mjs';
 import { validateAudit, validateZap } from '../security/evidence.mjs';
+import { cleanupProject, localSutTag } from './docker-cleanup.mjs';
 import { aggregate, createReceipts, decide, summarize } from './evidence.mjs';
 
 const timestamp = '2026-01-01T00:00:00.000Z';
@@ -188,6 +189,112 @@ test('completed actionable ZAP finding remains INCONCLUSIVE', t => {
   assert.equal(f.summary().required['zap-baseline'], 'INCONCLUSIVE');
   assert.equal(f.summary().outcome, 'INCONCLUSIVE');
 });
+
+test('hosted cleanup incident keeps native passes visible and blocks the gate', t => {
+  const f = fixture(t);
+  f.execution.accessibility.code = 2;
+  f.execution.security.code = 2;
+  f.execution.cleanup = { state: 'error', code: null, diagnostic: 'Unowned SUT image tag' };
+  for (const name of ['npm-audit.json', 'npm-audit-invocation.json', 'npm-audit-result.json']) {
+    rmSync(join(f.bundle, 'native/security', name));
+  }
+  const result = f.summary();
+  for (const id of ['search_smoke', 'axe-baseline', 'keyboard-baseline', 'csp-baseline', 'zap-baseline']) {
+    assert.equal(result.required[id], 'PASS', id);
+  }
+  assert.equal(result.required['npm-audit'], 'TOOL_ERROR');
+  assert.deepEqual(result.diagnostics, [
+    'Scoped Docker cleanup was not verified', 'Wrapper exit contradicts validated scenarios: accessibility',
+  ]);
+  assert.equal(result.outcome, 'TOOL_ERROR');
+});
+
+test('npm audit invocation and passing disposition still require the native report', t => {
+  const f = fixture(t);
+  assert.equal(f.summary().required['npm-audit'], 'PASS');
+  rmSync(join(f.bundle, 'native/security/npm-audit.json'));
+  assert.equal(f.summary().required['npm-audit'], 'TOOL_ERROR');
+});
+
+function dockerFixture({ failDown = false, keepNetwork = false, foreignLabel = false } = {}) {
+  const project = `qel2-${namespace}`;
+  const checkout = ['/qel'];
+  const owned = { project, stage: 'performance', checkout };
+  const tag = `${project}-sut:latest`;
+  const image = { id: 'sha256:shared', labels: null };
+  const tags = new Map([[tag, image], ['other-sut:latest', image]]);
+  const containers = new Map([['sut', project], ['other-sut', 'other']]);
+  const networks = new Map([['lab', project], ['other-lab', 'other']]);
+  const commands = [];
+  const label = `com.docker.compose.project`;
+  const list = map => [...map].filter(([, owner]) => owner === project).map(([id]) => id).join('\n');
+  function docker(args) {
+    commands.push(args);
+    switch (args.slice(0, 2).join(' ')) {
+      case 'ps -aq':
+      case 'network ls':
+        assert.equal(args.at(-1), `label=${label}=${project}`);
+        return list(args[0] === 'ps' ? containers : networks);
+      case 'inspect --format':
+        assert.equal(args.at(-1), 'sut');
+        return JSON.stringify({ name: `/${project}-sut-1`, labels: {
+          [label]: foreignLabel ? 'other' : project, [`${label}.working_dir`]: checkout[0], 'com.docker.compose.service': 'sut',
+        } });
+      case 'network inspect':
+        assert.equal(args.at(-1), 'lab');
+        return JSON.stringify({ Name: `${project}_lab`, Internal: true, Labels: { [label]: project, 'com.docker.compose.network': 'lab' } });
+      case 'compose -p':
+        assert.deepEqual(args, ['compose', '-p', project, 'down']);
+        if (failDown) throw Error('Docker down failed');
+        containers.delete('sut');
+        if (!keepNetwork) networks.delete('lab');
+        return '';
+      case 'image ls':
+        assert.deepEqual(args, ['image', 'ls', '--filter', `reference=${tag}`, '--format', '{{.Repository}}:{{.Tag}}']);
+        return tags.has(tag) ? tag : '';
+      default: assert.fail(`Unexpected Docker operation: ${args.join(' ')}`);
+    }
+  }
+  return { owned, tag, tags, image, containers, networks, commands, docker };
+}
+
+test('verified Docker teardown preserves a foreign container, network and shared unlabeled image', () => {
+  const f = dockerFixture();
+  assert.equal(cleanupProject(f.owned, f.docker), f.tag);
+  assert.deepEqual([...f.containers], [['other-sut', 'other']]);
+  assert.deepEqual([...f.networks], [['other-lab', 'other']]);
+  assert.equal(f.tags.get(f.tag), f.tags.get('other-sut:latest'));
+  assert.deepEqual(f.tags.get(f.tag), { id: 'sha256:shared', labels: null });
+});
+
+test('an image ID under a different tag does not occupy the requested Compose tag', () => {
+  const f = dockerFixture();
+  f.tags.delete(f.tag);
+  assert.equal(localSutTag(f.owned.project, f.docker), null);
+  assert.equal(f.tags.get('other-sut:latest'), f.image);
+});
+
+test('a mismatched container owner blocks teardown before any deletion', () => {
+  const f = dockerFixture({ foreignLabel: true });
+  assert.throws(() => cleanupProject(f.owned, f.docker), /Container project label mismatch/);
+  assert.equal(f.commands.length, 3);
+  assert.equal(f.containers.size, 2);
+  assert.equal(f.networks.size, 2);
+});
+
+for (const [setting, error] of [['failDown', /Docker down failed/], ['keepNetwork', /Owned resources remain after teardown/]]) {
+  test(`Docker ${setting} keeps cleanup TOOL_ERROR with complete native evidence`, t => {
+    const f = dockerFixture({ [setting]: true });
+    const evidence = fixture(t);
+    assert.throws(() => cleanupProject(f.owned, f.docker), failure => {
+      assert.match(failure.message, error);
+      evidence.execution.cleanup = { state: 'error', code: null, diagnostic: failure.message };
+      return true;
+    });
+    assert.equal(evidence.summary().localValidation, 'TOOL_ERROR');
+    assert.equal(evidence.summary().outcome, 'TOOL_ERROR');
+  });
+}
 
 test('completed npm audit with advisories is distinct from an unavailable service', t => {
   const f = fixture(t);

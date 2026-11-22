@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { requireValid } from './adapters.mjs';
+import { cleanupProject, localSutTag, projectResources } from './docker-cleanup.mjs';
 import { createReceipts, decide, hash, parseJson, readArtifact, scenarioFiles, summarize, validateContext } from './evidence.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -87,15 +88,6 @@ function projectIds(namespace) {
 
 function dockerList(args, file) {
   return checked('docker', args, { file }).split(/\r?\n/).filter(Boolean);
-}
-
-function resources(project, file) {
-  const label = `label=com.docker.compose.project=${project}`;
-  return {
-    containers: dockerList(['ps', '-aq', '--no-trunc', '--filter', label], file),
-    networks: dockerList(['network', 'ls', '-q', '--no-trunc', '--filter', label], file),
-    images: dockerList(['image', 'ls', '-q', '--filter', `reference=${project}-sut`], file),
-  };
 }
 
 function portabilityEnv() {
@@ -189,7 +181,8 @@ function execute(identity) {
       executions[stage] = { state: 'not_run', diagnostic: 'Configuration or contract test prerequisite failed' };
     } else {
       try {
-        requireValid(Object.values(resources(project, file)).every(ids => ids.length === 0), `Compose project is already in use: ${project}`);
+        const docker = args => checked('docker', args, { file });
+        requireValid(Object.values(projectResources(project, docker)).every(ids => ids.length === 0) && !localSutTag(project, docker), `Compose project is already in use: ${project}`);
         const expectedOutput = join(logs, stage === 'performance' ? project :
           `${stage === 'accessibility' ? 'qel3' : 'qel4'}-${context.namespace}`);
         requireValid(!lstatOrMissing(expectedOutput), 'Native output directory is already in use');
@@ -219,38 +212,9 @@ function cleanup(context, paths) {
   requireValid(Array.isArray(owned) && owned.every(stage => stages.includes(stage)) && new Set(owned).size === owned.length, 'Invalid cleanup ownership record');
   for (const stage of owned) {
     const project = projectIds(context.namespace)[stage];
-    const remaining = resources(project, file);
-    for (const id of remaining.containers) {
-      const data = dockerJson(['inspect', '--format', '{"name":{{json .Name}},"labels":{{json .Config.Labels}}}', id], file);
-      const labels = data.labels;
-      requireValid(labels?.['com.docker.compose.project'] === project, 'Container project label mismatch');
-      if (labels['com.docker.compose.service'] === 'sut') {
-        requireValid(data.name === `/${project}-sut-1` && [root.slice(0, -1), root].includes(labels['com.docker.compose.project.working_dir']),
-          'SUT is outside the owned checkout');
-      } else {
-        const ownedAuxiliary = stage === 'performance' ? labels['qel.performance'] === 'search_smoke' &&
-          new RegExp(`^/${project}-notebook-[0-9a-f]{32}$`).test(data.name) :
-          labels['qel.run'] === project.replace(/-baseline$/, '') &&
-          (stage === 'accessibility' ? data.name === `/${project}-browser` : ['gateway', 'zap'].some(name => data.name === `/${project}-${name}`));
-        requireValid(ownedAuxiliary, 'Unknown auxiliary container in owned project');
-        checked('docker', ['rm', '-f', id], { file });
-      }
-    }
-    for (const id of remaining.networks) {
-      const net = dockerJson(['network', 'inspect', '--format', '{{json .}}', id], file);
-      requireValid(net.Internal && net.Labels?.['com.docker.compose.project'] === project, 'Unexpected network ownership or isolation');
-      if (net.Name === `${project}-scan` && stage === 'security' && net.Labels['qel.run'] === project.replace(/-baseline$/, '')) {
-        checked('docker', ['network', 'rm', id], { file });
-      } else {
-        requireValid(net.Name === `${project}_lab` && net.Labels['com.docker.compose.network'] === 'lab', 'Unknown project network');
-      }
-    }
-    if (remaining.images.length) {
-      const labels = dockerJson(['image', 'inspect', '--format', '{{json .Config.Labels}}', `${project}-sut`], file);
-      requireValid(labels?.['com.docker.compose.project'] === project && labels['com.docker.compose.service'] === 'sut', 'Unowned SUT image tag');
-    }
-    if (Object.values(remaining).some(ids => ids.length)) checked('docker', ['compose', '-p', project, 'down', '--rmi', 'local'], { file, env: portabilityEnv() });
-    requireValid(Object.values(resources(project, file)).every(ids => ids.length === 0), 'Owned resources remain after teardown');
+    const docker = args => checked('docker', args, { file, env: portabilityEnv() });
+    const tag = cleanupProject({ project, stage, checkout: [root.slice(0, -1), root] }, docker);
+    appendFileSync(file, `${project}: containers and networks removed; local SUT tag ${tag ? `retained (${tag})` : 'absent'}\n`);
     if (stage === 'accessibility') {
       const tag = `qel3-${context.namespace}-browser`;
       if (dockerList(['image', 'ls', '-q', '--filter', `reference=${tag}`], file).length) {

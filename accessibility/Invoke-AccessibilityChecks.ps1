@@ -111,13 +111,21 @@ function Get-OwnedIds([string]$Project) {
     (Invoke-Docker @('network','ls','-q','--filter',"label=com.docker.compose.project=$Project")).lines
 }
 
+function Get-LocalSutTag([string]$Project) {
+    $tag = "$Project-sut:latest"
+    (Invoke-Docker @('image','ls','--filter',"reference=$tag",'--format','{{.Repository}}:{{.Tag}}')).lines |
+        Where-Object { $_ -ceq $tag }
+}
+
 function Remove-Project([string]$Project) {
     $browser = (Invoke-Docker @('ps','-aq','--filter',"label=com.docker.compose.project=$Project",'--filter',"label=qel.run=$run")).lines
     if ($browser) { $null = Invoke-Docker (@('rm','-f') + $browser) }
     $null = Get-OwnedIds $Project
-    $null = Invoke-Docker @('compose','-p',$Project,'down','--rmi','local')
+    $null = Invoke-Docker @('compose','-p',$Project,'down')
     Assert-Run (!(Get-OwnedIds $Project)) "Project $Project still has containers or networks."
-    Assert-Run (!(Invoke-Docker @('image','ls','-q','--filter',"reference=$Project-sut")).lines) "Project $Project still has a local SUT image tag."
+    $tag = Get-LocalSutTag $Project
+    if ($tag) { Write-Host "Project $Project retained local SUT tag $tag." }
+    else { Write-Host "Project $Project has no local SUT tag after teardown." }
     $null = $projects.Remove($Project)
 }
 
@@ -149,7 +157,7 @@ try {
 
     foreach ($profile in $profiles.Keys) {
         $project = "$run-$profile"
-        Assert-Run (!(Get-OwnedIds $project) -and !(Invoke-Docker @('image','ls','-q','--filter',"reference=$project-sut")).lines) "Compose identity $project is already in use."
+        Assert-Run (!(Get-OwnedIds $project) -and !(Get-LocalSutTag $project)) "Compose identity $project is already in use."
         $projects.Add($project)
         $env:LAB_A11Y_DEFECT = $profiles[$profile]
         $null = Invoke-Docker @('compose','-p',$project,'build','sut')
