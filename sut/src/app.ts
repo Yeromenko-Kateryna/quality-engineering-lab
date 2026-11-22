@@ -52,6 +52,10 @@ export function buildApp() {
   const config = readConfig();
   const app = Fastify();
 
+  app.addHook('onRequest', async (_request, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+  });
+
   function html(reply: FastifyReply, title: string, content: string) {
     if (!config.securityDefect) reply.header('Content-Security-Policy', csp);
     return reply.type('text/html; charset=utf-8').send(`<!doctype html>

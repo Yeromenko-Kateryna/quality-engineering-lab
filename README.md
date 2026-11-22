@@ -6,6 +6,8 @@ QEL-2 adds a local k6 HTTP smoke for the search API.
 
 QEL-3 adds Chromium accessibility and keyboard checks for the catalogue and search pages.
 
+QEL-4 adds a local CSP regression check, a scoped ZAP passive baseline and a separate npm advisory audit.
+
 ## Build and start
 
 Use Docker with a Linux engine and the Compose plugin supporting `up --wait --wait-timeout`. The build fetches the pinned Node 24.15.0 image and installs dependencies from the npm lockfile. Run the PowerShell commands below from the repository root. Use a new project name for each independent run.
@@ -67,6 +69,8 @@ Set the variable before Compose starts the SUT, and use a fresh project or recre
 | `LAB_SECURITY_DEFECT` | `false` | Exact `true` or `false`. With `true`, omits the CSP response header from the catalogue and search pages. |
 
 The default CSP is `default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`. The pages use no scripts, stylesheets or external assets. The search form submits to the same origin. HSTS is outside this HTTP-only contract.
+
+The SUT sends `X-Content-Type-Options: nosniff` on HTML and JSON responses, including the HTTP 400 search page and the health endpoint. The CSP defect switch still omits only CSP.
 
 ## Stop the owned project
 
@@ -143,3 +147,30 @@ Each run writes to ignored `logs/qel3-<id>/`. The three profile folders contain 
 The wrapper cleans up each owned project before starting the next and removes its runner image after the sequence. Reports stay on the host. If the wrapper is forcibly interrupted, use the project identities in `execution.txt` and verify ownership labels before scoped cleanup.
 
 Coverage is limited to automated axe rules and the documented Chromium keyboard and focus checks. It provides no general WCAG conformance result, cross-browser coverage or screen-reader testing.
+
+## Run the controlled security baseline
+
+Use PowerShell 7.4+, Git, Node 24, Docker with a Linux engine, and Compose with `up --wait`. Run from the repository root.
+
+```powershell
+& ./security/Invoke-SecurityChecks.ps1
+$LASTEXITCODE
+```
+
+The runner pulls digest-pinned ZAP 2.17.0 and Node 24.15.0 images before starting the SUTs. It runs the same HTTP checker in three fresh Compose projects. Only the injected project has `LAB_SECURITY_DEFECT=true`. Delay remains `0` and the accessibility switch remains `false` throughout. Each HTML state must return the expected status, `text/html`, exactly one approved CSP header, and exactly one `X-Content-Type-Options: nosniff` header. The checker also verifies HTTP 200, `application/json`, and `nosniff` on `/health`, `/api/items` and `/api/search?q=notebook`. It records body hashes so the runner can compare responses across profiles. In the injected profile, the five HTML responses must omit CSP and all eight responses must retain `nosniff`.
+
+The fixed origin is `http://sut:3000`. The permitted scanner requests are GET `/`, `/search`, `/search?q=notebook`, `/search?q=compass`, and `/search?q=`. The last route returns HTTP 400. The passive spider begins at `/` and reports the pages it actually examines. The runner requires evidence of scanning both `/` and `/search`, the routes originally affected by ZAP rule `10021`. API endpoints and readiness are checked only by the direct HTTP probe on `lab`. Other query parameters, duplicate parameters and redirects are outside the scan.
+
+ZAP joins a project-owned internal scanner network. Only the temporary request guard also joins the SUT's internal `lab` network. The scanner resolves `sut` to the guard, which forwards exact authorized requests to the inspected SUT bridge address. It rejects redirects before returning a location to the scanner and caps upstream requests at 32. The parser and loopback fixtures exercise forbidden URLs, discovered links and redirects. Docker TCP probes verify that a direct connection from the scanner network to the SUT bridge address fails while the same listener remains reachable from `lab`.
+
+The packaged ZAP Baseline uses its exact context and in-scope passive analysis. The traditional spider is limited to one minute, depth two and five children per node. Form processing and robots/sitemap discovery are disabled. ZAP startup and passive processing waits use one-minute limits, and the process has a 160-second deadline plus a five-second termination grace period. The report check requires recorded URLs, guard observations and an empty passive queue.
+
+The dependency check uses `npm audit --package-lock-only --json --registry=https://registry.npmjs.org/` from a separate Docker bridge, with read-only mounts of the manifest and lockfile, retries disabled and a finite request timeout. An offline control exercises advisory-service failure. Audit findings are time-dependent, and suggested fixes are recorded for review.
+
+Evidence stays under ignored `logs/qel4-<id>/`. Each profile contains HTTP observations and the CSP verdict. The baseline folder also contains native `zap.json`, scanner logs, guard request observations and finding dispositions. The run root contains npm JSON, lockfile identity, the offline control, scope checks and a transcript with exact invocations and native exits.
+
+ZAP exit `0` means successful baseline completion, `1` a configured FAIL-level alert, `2` warnings, and `3` an execution error. The local validator requires evidence in addition to the native exit. It records unresolved findings as `INCONCLUSIVE`; missing or corrupt outputs and failed tool execution are `TOOL_ERROR`. The wrapper exits `0` for a completed gate with no unresolved policy dispositions, `1` when findings need review, and `2` for incomplete or failed verification. The expected injected CSP failure retains its own exit `1` and `FAIL`.
+
+The runner checks labels before removing its scanner, guard, internal networks, SUT containers and local SUT image tags. The pinned base images remain in the local cache. Reports survive teardown.
+
+This limited security baseline provides no penetration-test result or security certification.

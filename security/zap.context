@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <context>
+    <name>QEL4</name>
+    <desc>Exact QEL-4 HTML scope</desc>
+    <inscope>true</inscope>
+    <incregexes>^http://sut:3000/(?:search(?:\?q=(?:notebook|compass)?)?)?$</incregexes>
+  </context>
+</configuration>
