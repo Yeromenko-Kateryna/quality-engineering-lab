@@ -1,0 +1,46 @@
+name: QEL quality evidence
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Required quality gate (CI-G01)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+      - name: Run required scenarios
+        id: execute
+        run: node ci/run.mjs run
+      - name: Clean owned resources and prepare evidence
+        if: ${{ always() && steps.execute.outputs.bundle != '' }}
+        run: node ci/run.mjs prepare
+      - name: Publish mandatory evidence
+        id: publication
+        if: ${{ always() && steps.execute.outputs.bundle != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qel-evidence-${{ steps.execute.outputs.namespace }}
+          path: ${{ steps.execute.outputs.bundle }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Enforce CI-G01
+        if: ${{ always() }}
+        env:
+          QEL_UPLOAD_OUTCOME: ${{ steps.publication.outcome }}
+          QEL_ARTIFACT_ID: ${{ steps.publication.outputs.artifact-id }}
+          QEL_ARTIFACT_URL: ${{ steps.publication.outputs.artifact-url }}
+        run: node ci/run.mjs decide

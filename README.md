@@ -174,3 +174,35 @@ ZAP exit `0` means successful baseline completion, `1` a configured FAIL-level a
 The runner checks labels before removing its scanner, guard, internal networks, SUT containers and local SUT image tags. The pinned base images remain in the local cache. Reports survive teardown.
 
 This limited security baseline provides no penetration-test result or security certification.
+
+## Run CI evidence checks locally
+
+Use Node 24, PowerShell 7.4+, Git, Docker with a Linux engine and Compose. Run from the repository root with access to the pinned image registries and the npm advisory service.
+
+```powershell
+node --test ci/contracts.test.mjs
+node ci/run.mjs local pr
+node ci/run.mjs local main
+```
+
+The `QEL quality evidence` workflow runs on pull requests targeting `main` and pushes to `main`. The required job is `Required quality gate (CI-G01)`. It uses `ubuntu-24.04`, a 30-minute limit, `contents: read` and checkout without persisted credentials. Checkout 5.0.0 and setup-node 5.0.0 are pinned Node 24 actions. Setup installs Node 24.15.0 and disables dependency caching. Upload-artifact 4.6.2 is pinned for GitHub-hosted artifact publication. The Ubuntu runner supplies PowerShell and Docker Compose.
+
+| Scenario | Policy | PR | Main |
+| --- | --- | --- | --- |
+| `search_smoke` | `PERF-G01` | Required | Required |
+| `axe-baseline` | `A11Y-G01` | Required | Required |
+| `keyboard-baseline` | `A11Y-G02` | Required | Required |
+| `csp-baseline` | `SEC-G01` | Required | Required |
+| `zap-baseline` | `SEC-G01` | Intentionally absent, recorded as `NOT_RUN` | Required |
+| `npm-audit` | `DEP-G01` | Required | Required |
+| `latency-comparison` | `PERF-G02` | Optional, `NOT_RUN` | Optional, `NOT_RUN` |
+
+The versioned manifest is `ci/manifest.json`. Both paths validate the Compose configuration and run the evidence contract tests before building healthy SUTs. CI uses baseline-only accessibility and security invocations. The individual runner commands above still execute the full local profile sequences. The Linux path uses the platform Docker CLI and prepares only freshly owned report directories for container writers. Security scanning retains the isolated target, gateway and bounded passive configuration. The npm audit still runs separately.
+
+Each execution writes to an ignored `logs/qel5-<namespace>/bundle/`. `native/` holds the k6 summary and diagnostics, Playwright and axe reports, HTTP observations, applicable ZAP report and dispositions, and npm audit JSON. `executions.json` separates wrapper state and exit from native exits. Version-1 receipts record the scenario, dimension, policy and policy version, outcome, actual native exit, timestamp, environmental and tool versions, and hashed artifact references. `context.json` records the checked-out SHA, PR head and event SHA separately, real run ID and attempt or local identifier, worktree status, source fingerprint and lockfile hash.
+
+`preliminary.json` records local evidence validation. The final decision revalidates receipts and artifacts, rejects missing or contradictory evidence, and applies required-state precedence in this order: `FAIL`, `TOOL_ERROR`, `INCONCLUSIVE`, `NOT_RUN`, `PASS`. Optional outcomes stay visible. Missing receipts are evidence errors. An explicit skip records the reason. To diagnose incomplete evidence, inspect the scenario receipt, then the corresponding native and stage logs.
+
+After ordinary test failures the workflow still prepares and uploads the bundle with 14-day retention and missing-file behavior set to `error`. The final `CI-G01` step requires a successful upload and matching action-provided artifact ID and URL. It records the decision and publication outputs in the workflow summary. Independent retrieval is a separate verification step. Local commands return the local validation result and record publication as `NOT_RUN`.
+
+Names are derived from GitHub run, attempt and job identity or a local UUID. Cleanup checks known project names and Docker ownership labels before removing residual resources, and runs even after ordinary failures. Immediate runner termination may prevent cleanup. No calibrated latency result, WCAG conformance, broad security certification or hosted acceptance is implied by local output.

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "publicationPolicy": "CI-G01",
+  "scenarios": [
+    { "id": "search_smoke", "policy": "PERF-G01", "dimension": "performance", "stage": "performance", "pr": "required", "main": "required" },
+    { "id": "axe-baseline", "policy": "A11Y-G01", "dimension": "accessibility", "stage": "accessibility", "pr": "required", "main": "required" },
+    { "id": "keyboard-baseline", "policy": "A11Y-G02", "dimension": "accessibility", "stage": "accessibility", "pr": "required", "main": "required" },
+    { "id": "csp-baseline", "policy": "SEC-G01", "dimension": "security", "stage": "security", "pr": "required", "main": "required" },
+    { "id": "zap-baseline", "policy": "SEC-G01", "dimension": "security", "stage": "security", "pr": "absent", "main": "required" },
+    { "id": "npm-audit", "policy": "DEP-G01", "dimension": "dependencies", "stage": "security", "pr": "required", "main": "required" },
+    { "id": "latency-comparison", "policy": "PERF-G02", "dimension": "performance", "stage": "performance", "pr": "optional", "main": "optional" }
+  ]
+}

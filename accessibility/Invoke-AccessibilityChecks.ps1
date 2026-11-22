@@ -1,16 +1,21 @@
 #Requires -Version 7.4
+param(
+    [ValidatePattern('^[0-9a-f]{32}$', Options = 'None')]
+    [string]$CiRun
+)
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = Split-Path -Parent $PSScriptRoot
-$run = "qel3-$([guid]::NewGuid().ToString('N'))"
+$run = if ($CiRun) { "qel3-$CiRun" } else { "qel3-$([guid]::NewGuid().ToString('N'))" }
 $image = "${run}-browser"
 $output = (New-Item -ItemType Directory -Path (Join-Path $root "logs/$run")).FullName
 $routes = [ordered]@{
     catalogue = '/'; search = '/search'; matching = '/search?q=notebook'
     empty = '/search?q=compass'; invalid = '/search?q='
 }
-$profiles = [ordered]@{ baseline = 'false'; injected = 'true'; recovery = 'false' }
+$profiles = [ordered]@{ baseline = 'false' }
+if (!$CiRun) { $profiles['injected'] = 'true'; $profiles['recovery'] = 'false' }
 $variables = 'LAB_DELAY_MS', 'LAB_SECURITY_DEFECT', 'LAB_A11Y_DEFECT'
 $saved = @{}
 $projects = [System.Collections.Generic.List[string]]::new()
@@ -139,7 +144,8 @@ try {
     $runnerBuilt = $true
     $null = Invoke-Docker @('build','-t',$image,'--label',"qel.run=$run",'accessibility')
     $runnerImageId = (Invoke-Docker @('image','inspect','--format','{{.Id}}',$image)).lines[0]
-    $null = Invoke-Docker @('run','--rm','--network','none','--pull','never',$image,'node','-p','JSON.stringify({node:process.version,playwright:require("@playwright/test/package.json").version,axe:require("axe-core").version})')
+    $versions = Invoke-Docker @('run','--rm','--network','none','--pull','never',$image,'node','-p','JSON.stringify({node:process.version,playwright:require("@playwright/test/package.json").version,axe:require("axe-core").version})')
+    if ($CiRun) { $versions.lines | Set-Content -LiteralPath (Join-Path $output 'versions.json') }
 
     foreach ($profile in $profiles.Keys) {
         $project = "$run-$profile"
@@ -155,6 +161,10 @@ try {
         $env:LAB_A11Y_DEFECT = $profiles[$profile]
         $record = [ordered]@{ run = $run; profile = $profile; revision = $revision; project = $project; image = $runnerImageId; reportDirectory = $folder; nativeExit = $null; outcome = 'TOOL_ERROR' }
         try {
+            if ($IsLinux) {
+                chmod a+w -- $folder
+                Assert-Run ($LASTEXITCODE -eq 0) 'Could not prepare the owned Playwright output directory.'
+            }
             $null = Invoke-Docker @('compose','-p',$project,'up','--no-build','--pull','never','--wait','--wait-timeout','20','sut')
             $id = (Invoke-Docker @('compose','-p',$project,'ps','-q','sut')).lines[0]
             $sutInfo = (Invoke-Docker @('inspect','--format','{"id":{{json .Id}},"owner":{{json (index .Config.Labels "com.docker.compose.project")}},"health":{{json .State.Health.Status}},"image":{{json .Image}}}',$id)).lines[0] | ConvertFrom-Json -AsHashtable
@@ -189,6 +199,9 @@ try {
         }
     }
 
+    if ($CiRun) {
+        $exitCode = switch ($outcomes['baseline'].outcome) { 'PASS' { 0 }; 'FAIL' { 1 }; default { 2 } }
+    } else {
     $injected = $outcomes['injected'].evidence
     $nameFailure = @($injected.failures | Where-Object { $_.test -ceq 'search' -and $_.message -match 'A11Y: search input accessible name' })
     $unexpected = @($injected.failures | Where-Object { $_.message -notmatch 'A11Y: (search input accessible name|no serious or critical axe findings)' })
@@ -214,6 +227,7 @@ try {
         $exitCode = 0
     } elseif ('TOOL_ERROR' -notin @($outcomes.Values.outcome)) {
         $exitCode = 1
+    }
     }
     $after = @(Get-ComposeInventory | Sort-Object)
     Assert-Run (($before -join '\n') -ceq ($after -join '\n')) 'Other Compose container or network inventory changed.'

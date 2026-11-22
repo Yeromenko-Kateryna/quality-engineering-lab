@@ -89,6 +89,10 @@ $result = [ordered]@{
 $exitCode = 2
 
 try {
+    if ($IsLinux) {
+        chmod a+w -- $output
+        if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the owned k6 output directory.' }
+    }
     $networkName = "${Project}_lab"
     $ids = @(docker ps -q --no-trunc --filter "label=com.docker.compose.project=$Project" --filter 'label=com.docker.compose.service=sut' --filter 'health=healthy')
     if ($LASTEXITCODE -ne 0 -or $ids.Count -ne 1) {

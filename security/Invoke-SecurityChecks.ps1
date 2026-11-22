@@ -1,9 +1,15 @@
 #Requires -Version 7.4
+param(
+    [ValidatePattern('^[0-9a-f]{32}$', Options = 'None')]
+    [string]$CiRun,
+    [ValidateSet('pr','main')]
+    [string]$CiProfile = 'main'
+)
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = Split-Path -Parent $PSScriptRoot
-$run = "qel4-$([guid]::NewGuid().ToString('N'))"
+$run = if ($CiRun) { "qel4-$CiRun" } else { "qel4-$([guid]::NewGuid().ToString('N'))" }
 $output = (New-Item -ItemType Directory -Path (Join-Path $root "logs/$run")).FullName
 $nodeImage = 'node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d'
 $zapImage = 'ghcr.io/zaproxy/zaproxy:2.17.0@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af'
@@ -14,7 +20,10 @@ $noProxy = foreach ($name in 'HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY','
 }
 $variables = 'LAB_DELAY_MS', 'LAB_A11Y_DEFECT', 'LAB_SECURITY_DEFECT'
 $saved = @{}
-$profiles = [ordered]@{ baseline = 'false'; injected = 'true'; recovery = 'false' }
+$profiles = [ordered]@{ baseline = 'false' }
+if (!$CiRun) { $profiles['injected'] = 'true'; $profiles['recovery'] = 'false' }
+$scanRequired = !$CiRun -or $CiProfile -ceq 'main'
+$dockerCommand = (Get-Command docker -CommandType Application | Select-Object -First 1).Path
 $cspResults = [ordered]@{}
 $projects = [System.Collections.Generic.List[string]]::new()
 $exitCode = 2
@@ -35,7 +44,7 @@ function Invoke-Tool([string]$Command, [string[]]$Arguments, [string]$Save, [swi
 }
 
 function Docker([string[]]$Arguments, [string]$Save, [switch]$AllowFailure) {
-    Invoke-Tool 'docker.exe' $Arguments -Save $Save -AllowFailure:$AllowFailure
+    Invoke-Tool $dockerCommand $Arguments -Save $Save -AllowFailure:$AllowFailure
 }
 
 function Confirm($Condition, [string]$Message) {
@@ -72,6 +81,10 @@ function Inventory {
 }
 
 function Invoke-PassiveBaseline([string]$Project, $Lab, [string]$SutIp, [string]$Folder) {
+    if ($IsLinux) {
+        chmod a+w -- $Folder
+        Confirm ($LASTEXITCODE -eq 0) 'Owned ZAP output directory is writable'
+    }
     $frontId = (Docker @('network','create','--internal','--label',"com.docker.compose.project=$Project",'--label',"qel.run=$run","$Project-scan")).lines[0]
     $front = (Docker @('network','inspect','--format','{{json .}}',$frontId)).lines[0] | ConvertFrom-Json -AsHashtable
     Confirm ($front.Internal -and $front.Labels['qel.run'] -ceq $run -and $front.Labels['com.docker.compose.project'] -ceq $Project -and $front.Containers.Count -eq 0) 'Scanner network is owned, internal and initially empty'
@@ -124,8 +137,8 @@ function Invoke-Audit([string]$Network, [string]$Name) {
         '--mount',"type=bind,source=$lock,target=/locked/package-lock.json,readonly",
         $nodeImage,'npm','audit','--package-lock-only','--json','--registry=https://registry.npmjs.org/',
         '--fetch-retries=0','--fetch-timeout=15000','--no-update-notifier')
-    $executed = Invoke-Tool 'docker.exe' $arguments -Save $file -SeparateError -AllowFailure
-    [ordered]@{ utc = [DateTime]::UtcNow.ToString('o'); lockSha256 = (Get-FileHash -LiteralPath $lock).Hash; command = @('docker.exe') + $arguments; nativeExit = $executed.code } |
+    $executed = Invoke-Tool $dockerCommand $arguments -Save $file -SeparateError -AllowFailure
+    [ordered]@{ utc = [DateTime]::UtcNow.ToString('o'); lockSha256 = (Get-FileHash -LiteralPath $lock).Hash; command = @($dockerCommand) + $arguments; nativeExit = $executed.code } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output "$Name-invocation.json")
     Evidence audit $file $executed.code (Join-Path $output "$Name-result.json")
 }
@@ -142,9 +155,13 @@ try {
     $before = @(Inventory | Sort-Object)
     $null = Invoke-Tool 'node' @('--version')
     $null = Docker @('pull',$nodeImage)
-    $null = Docker @('pull',$zapImage)
-    $null = Docker @('run','--rm','--pull','never','--network','none',$nodeImage,'node','--version')
-    $null = Docker @('run','--rm','--pull','never','--network','none',$nodeImage,'npm','--version')
+    if ($scanRequired) { $null = Docker @('pull',$zapImage) }
+    $nodeVersion = (Docker @('run','--rm','--pull','never','--network','none',$nodeImage,'node','--version')).lines[0]
+    $npmVersion = (Docker @('run','--rm','--pull','never','--network','none',$nodeImage,'npm','--version')).lines[0]
+    if ($CiRun) {
+        @{ node = $nodeVersion; npm = $npmVersion; nodeImage = $nodeImage; zapImage = $zapImage } |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'versions.json')
+    }
     $null = Docker @('run','--rm','--pull','never','--network','none','--mount',$sourceMount,$nodeImage,'node','--test','/qel/scope.test.mjs') -Save (Join-Path $output 'scope-tests.txt')
 
     foreach ($name in $variables) { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
@@ -172,8 +189,15 @@ try {
                 $detail.id -in $lab.Containers.Keys -and $detail.project -ceq $project -and $detail.health -ceq 'healthy') "Owned healthy SUT for $profile"
             $path = Join-Path $folder 'http-csp.json'
             $check = Docker @('run','--rm','--pull','never','--network',$lab.Id,'--mount',$sourceMount,$nodeImage,'node','/qel/scope.mjs','csp') -Save $path -AllowFailure
+            if ($CiRun) {
+                @{ nativeExit = $check.code; sut = $detail; networkId = $lab.Id } |
+                    ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $folder 'http-invocation.json')
+            }
             $cspResults[$profile] = Evidence csp $path $check.code (Join-Path $folder 'csp-result.json')
-            if ($profile -ceq 'baseline') {
+            if ($CiRun -and $scanRequired -and $cspResults[$profile].outcome -cne 'PASS') {
+                @{ reason = 'CSP baseline did not pass' } | ConvertTo-Json |
+                    Set-Content -LiteralPath (Join-Path $folder 'zap-not-run.json')
+            } elseif ($profile -ceq 'baseline' -and $scanRequired) {
                 try {
                     Confirm ($cspResults[$profile].outcome -ceq 'PASS') 'CSP baseline qualifies before supplementary scan'
                     $ip = $lab.Containers[$detail.id].IPv4Address.Split('/')[0]
@@ -190,6 +214,15 @@ try {
     }
 
     $audit = Invoke-Audit 'bridge' 'npm-audit'
+    if ($CiRun) {
+        $after = @(Inventory | Sort-Object)
+        Confirm (($before -join "`n") -ceq ($after -join "`n")) "Unrelated Compose inventory unchanged ($($after.Count) rows)"
+        if ($cspResults.baseline.outcome -cin 'PASS','FAIL' -and $audit.execution -ceq 'PASS' -and
+            (!$scanRequired -or $zapResult.execution -ceq 'PASS')) {
+            $exitCode = if ($cspResults.baseline.outcome -ceq 'PASS' -and $audit.outcome -ceq 'PASS' -and
+                (!$scanRequired -or $zapResult.outcome -ceq 'PASS')) { 0 } else { 1 }
+        }
+    } else {
     $offline = Invoke-Audit 'none' 'npm-offline-control'
     Confirm ($offline.outcome -ceq 'TOOL_ERROR') 'Unavailable advisory service cannot become a clean report'
     $noTarget = Docker @('run','--rm','--pull','never','--network','none',$zapImage,'zap-baseline.py') -Save (Join-Path $output 'zap-no-target.log') -AllowFailure
@@ -217,6 +250,7 @@ try {
     if ($zapResult.execution -ceq 'PASS' -and $audit.execution -ceq 'PASS') {
         Confirm ('http://sut:3000/' -cin $zapResult.examined -and 'http://sut:3000/search' -cin $zapResult.examined) 'ZAP examined both routes previously affected by rule 10021'
         $exitCode = if ($zapResult.outcome -ceq 'PASS' -and $audit.outcome -ceq 'PASS') { 0 } else { 1 }
+    }
     }
 } catch {
     Write-Host $_.Exception.Message
