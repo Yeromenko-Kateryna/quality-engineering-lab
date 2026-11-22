@@ -1,6 +1,25 @@
 # Evidence index
 
+## Current hosted baseline
+
+The current verified baseline closes QEL-7. The QEL-8 README presentation and QEL-8R corrections are pending independent acceptance and publication.
+
+| Provenance | Verified record |
+| --- | --- |
+| Tested commit | `9dfd27d30eb0834a3304a103768760e5426ad0f0`, `main` profile |
+| Run and attempt | `45065795581`, attempt `1`. [GitHub Actions run](https://github.com/Yeromenko-Kateryna/quality-engineering-lab/actions/runs/45065795581) |
+| Workflow and gate | Workflow `success`, CI-G01 `PASS`, successful publication. |
+| Required scenarios | `search_smoke`, `axe-baseline`, `keyboard-baseline`, `csp-baseline`, `zap-baseline` and `npm-audit` all `PASS` (6/6). |
+| Optional scenario | `latency-comparison` recorded `NOT_RUN`. |
+| Artifact | `14771526803`, `qel-evidence-a1ffc790838908043f619462b41d7bd4`. [GitHub artifact](https://github.com/Yeromenko-Kateryna/quality-engineering-lab/actions/runs/45065795581/artifacts/14771526803) |
+| Independent verification | **2026-11-22**. The archive's seven receipts and all 49 native artifact references matched the recorded SHA-256 hashes and sizes. |
+| Retention | Workflow retention is 14 days. GitHub listed expiry at **2026-12-06 20:23:19 UTC**. Retrieval can require GitHub authentication. |
+
+The archive binds these results to the tested commit. Open `context.json` for revision and run identity, `preliminary.json` for outcomes and `receipts/` for native paths and hashes. The hosted archive contains CI baseline evidence. Historical local regression and calibration reports remain local-only.
+
 ## Hosted baseline
+
+This earlier run is retained as historical evidence.
 
 | Provenance | Verified record |
 | --- | --- |
@@ -15,7 +34,7 @@
 
 Start with `context.json`, then open `preliminary.json` and the relevant file in `receipts/`. The receipts identify native reports and SHA-256 hashes. The archive contains baseline Playwright and axe JSON, keyboard observations, the k6 smoke summary, CSP observations, passive ZAP reports and the npm audit. The two controlled regression sequences and the calibration batch are local-only evidence.
 
-After artifact expiry, the run page supplies workflow history and this tracked index preserves the verified revision, outcomes and reproduction paths. The native archive and this textual record have different verification uses. QEL-7 documentation changes require a separate hosted verification at their published revision.
+After artifact expiry, the run page supplies workflow history and this tracked index preserves the verified revision, outcomes and reproduction paths. The native archive and this textual record have different verification uses.
 
 ## Local controlled regressions
 
@@ -30,7 +49,7 @@ Run `node regressions/controlled.mjs run` to reproduce. The generated `logs/qel6
 
 ## Historical ZAP remediation
 
-**LOCAL-ONLY — NOT PUBLICLY RETRIEVABLE.** Run `qel4-1d692491f36440168c776784f9228516` retained rule `10021` for `/` and `/search` as `INCONCLUSIVE`, pending owner review. The local rerun `qel4-34f13e747b9e4ef5a83dd4250a1f26f1` completed at native exit `0` after the Fastify hook added `nosniff`. The hosted baseline above later examined both routes and recorded no findings. [Remediation commit](https://github.com/Yeromenko-Kateryna/quality-engineering-lab/commit/2d0ceecdf24c0426a000920cd0e5dc8b694ff3ed) · [Case and source](../docs/cases/controlled-regressions.md#historical-zap-rule-10021-remediation)
+**LOCAL-ONLY — NOT PUBLICLY RETRIEVABLE.** Run `qel4-1d692491f36440168c776784f9228516` retained rule `10021` for `/` and `/search` as `INCONCLUSIVE`, pending owner review. The local rerun `qel4-34f13e747b9e4ef5a83dd4250a1f26f1` completed at native exit `0` after the Fastify hook added `nosniff`. The earlier hosted baseline later examined both routes and recorded no findings. [Remediation commit](https://github.com/Yeromenko-Kateryna/quality-engineering-lab/commit/2d0ceecdf24c0426a000920cd0e5dc8b694ff3ed) · [Case and source](../docs/cases/controlled-regressions.md#historical-zap-rule-10021-remediation)
 
 ## Local performance calibration
 

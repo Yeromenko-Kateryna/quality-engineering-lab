@@ -2,7 +2,7 @@
 
 ## Purpose and current gate
 
-This repository demonstrates non-functional quality engineering (performance, accessibility, narrow security baseline), not another generic UI/API/DB test framework. The accepted architecture is **v0.2**; **QEL-1** is the next implementation gate. No SUT or test-run evidence is accepted yet.
+This repository demonstrates non-functional quality engineering (performance, accessibility, narrow security baseline), not another generic UI/API/DB test framework. The accepted architecture is **v0.2**. **QEL-1 through QEL-7 are accepted**, including final QEL-7 hosted verification. The **QEL-8** portfolio presentation, including QEL-8R, is pending independent acceptance and publication.
 
 ## Read first (targeted)
 
@@ -19,7 +19,7 @@ This repository demonstrates non-functional quality engineering (performance, ac
 - k6 latency comparison needs qualified matching conditions and calibrated/approved thresholds. No production-capacity claims from shared runners.
 - Required check statuses: `PASS`, `FAIL`, `TOOL_ERROR`, `INCONCLUSIVE`, `NOT_RUN`. Missing mandatory evidence is never PASS; preserve actual native reports and revision/run/policy provenance.
 
-## QEL-1 scope
+## Historical QEL-1 scope
 
 Implement and verify only the smallest runnable SUT and owned Compose lifecycle, including observable HTML/API behavior and safe configuration. Do not begin k6, axe, ZAP, CI aggregation, a new database, or P1/P2 features. Prefer one working vertical to speculative structure.
 

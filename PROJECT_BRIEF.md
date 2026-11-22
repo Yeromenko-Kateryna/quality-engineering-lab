@@ -1,6 +1,6 @@
 # Quality Engineering Lab — Project Brief
 
-- **Status** — QEL-1 through QEL-6 accepted. QEL-7 portfolio close is under local review, with final hosted acceptance pending.
+- **Status** — QEL-1 through QEL-7 accepted. QEL-7 final hosted verification is complete. The QEL-8 README presentation, including the QEL-8R corrections, is pending independent acceptance and publication.
 - **Architecture** — [Accepted technical contract v0.2](docs/architecture/QEL_ARCHITECTURE_IMPLEMENTATION_PLAN_v0.2.md)
 - **Review** — Independent Architecture Delta Review, 2026-11-22, `ACCEPT`, `ARCHITECTURE_READY = YES` (design-level only).
 - **Audience** — Junior QA Automation / Junior SDET reviewers in Germany/DACH and remote EU.
@@ -61,7 +61,8 @@ These switches must **never** control test assertions, thresholds, or report int
 - **QEL-2 through QEL-4 — ACCEPTED:** k6 smoke, accessibility and keyboard checks, CSP checks, scoped passive ZAP and npm audit. The QEL-4 revision added the `nosniff` response hook after triage of rule `10021`.
 - **QEL-5 — ACCEPTED:** hosted CI-G01, native evidence and receipts, with the QEL-5R shared-image teardown correction.
 - **QEL-6 — ACCEPTED:** local controlled regressions and performance eligibility. PERF-G02 remains optional and the local qualification decision is `INCONCLUSIVE`.
-- **QEL-7 — PORTFOLIO CLOSE:** documentation and local verification, followed by separate Coordinator acceptance at the published documentation revision.
+- **QEL-7 — ACCEPTED:** portfolio close completed with final hosted verification at the published documentation revision.
+- **QEL-8 — IN REVIEW:** employer-facing README presentation and QEL-8R documentation synchronization. Independent acceptance and publication are pending.
 
 ## Portfolio definition of done
 
@@ -75,4 +76,6 @@ The owner approves external publication/remote mutation, privileged access, dest
 
 ## Current evidence status
 
-Hosted run `45060111440`, attempt `1`, verified CI-G01 at `a18f6d6517235f5a89e8717f11ceb94165e51913`. Artifact `14769122504` was independently retrieved on 2026-11-22. The [evidence index](evidence/README.md) records native archive availability, the local regression and calibration runs, and their claim boundaries. Final hosted verification of the QEL-7 documentation revision is `NOT_RUN`.
+Final QEL-7 hosted verification completed on 2026-11-22 for `9dfd27d30eb0834a3304a103768760e5426ad0f0`, run `45065795581`, attempt `1`, artifact `14771526803`. CI-G01 and all six required scenarios passed. The hosted optional latency comparison was `NOT_RUN`. [Current hosted baseline](evidence/README.md#current-hosted-baseline)
+
+Earlier hosted run `45060111440`, attempt `1`, verified CI-G01 at `a18f6d6517235f5a89e8717f11ceb94165e51913`. Artifact `14769122504` was independently retrieved on 2026-11-22. The index preserves the earlier baseline and the original local regression and calibration records. [Earlier hosted baseline](evidence/README.md#hosted-baseline)
