@@ -212,3 +212,7 @@ Accessibility, security and CI teardown retain exact project SUT build tags and 
 The original hosted attempt recorded passing Playwright, CSP and ZAP checks. The wrappers treated a surviving SUT tag as a cleanup failure, so security stopped before npm audit. Central cleanup also rejected the shared image because it lacked Compose labels. The original run and artifact `14766047158` record that CI-G01 `TOOL_ERROR`. A fresh, separately authorized hosted run must verify the corrected Ubuntu lifecycle, native reports and artifact publication. [Original GitHub Actions run](https://github.com/Yeromenko-Kateryna/quality-engineering-lab/actions/runs/45051969856)
 
 Local output provides no calibrated latency result, WCAG conformance, broad security certification or hosted acceptance.
+
+## Reproduce the QEL-6 evidence
+
+The full local [controlled regression cases](docs/cases/controlled-regressions.md) preserve the accessibility and CSP baseline, injected result and recovery. The separate [performance calibration](docs/cases/performance-calibration.md) collects bounded latency measurements and evaluates comparison eligibility for a future policy. PERF-G01 and CI-G01 continue to use the existing checks.

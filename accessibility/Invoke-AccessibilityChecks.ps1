@@ -1,13 +1,16 @@
 #Requires -Version 7.4
 param(
     [ValidatePattern('^[0-9a-f]{32}$', Options = 'None')]
-    [string]$CiRun
+    [string]$CiRun,
+    [ValidatePattern('^[0-9a-f]{32}$', Options = 'None')]
+    [string]$LocalCaseRun
 )
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = Split-Path -Parent $PSScriptRoot
-$run = if ($CiRun) { "qel3-$CiRun" } else { "qel3-$([guid]::NewGuid().ToString('N'))" }
+if ($CiRun -and $LocalCaseRun) { throw 'Choose either CI or a local case run.' }
+$run = if ($CiRun) { "qel3-$CiRun" } elseif ($LocalCaseRun) { "qel3-$LocalCaseRun" } else { "qel3-$([guid]::NewGuid().ToString('N'))" }
 $image = "${run}-browser"
 $output = (New-Item -ItemType Directory -Path (Join-Path $root "logs/$run")).FullName
 $routes = [ordered]@{
@@ -153,7 +156,7 @@ try {
     $null = Invoke-Docker @('build','-t',$image,'--label',"qel.run=$run",'accessibility')
     $runnerImageId = (Invoke-Docker @('image','inspect','--format','{{.Id}}',$image)).lines[0]
     $versions = Invoke-Docker @('run','--rm','--network','none','--pull','never',$image,'node','-p','JSON.stringify({node:process.version,playwright:require("@playwright/test/package.json").version,axe:require("axe-core").version})')
-    if ($CiRun) { $versions.lines | Set-Content -LiteralPath (Join-Path $output 'versions.json') }
+    if ($CiRun -or $LocalCaseRun) { $versions.lines | Set-Content -LiteralPath (Join-Path $output 'versions.json') }
 
     foreach ($profile in $profiles.Keys) {
         $project = "$run-$profile"

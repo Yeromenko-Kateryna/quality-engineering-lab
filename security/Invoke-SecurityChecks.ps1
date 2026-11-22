@@ -3,13 +3,16 @@ param(
     [ValidatePattern('^[0-9a-f]{32}$', Options = 'None')]
     [string]$CiRun,
     [ValidateSet('pr','main')]
-    [string]$CiProfile = 'main'
+    [string]$CiProfile = 'main',
+    [ValidatePattern('^[0-9a-f]{32}$', Options = 'None')]
+    [string]$LocalCaseRun
 )
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = Split-Path -Parent $PSScriptRoot
-$run = if ($CiRun) { "qel4-$CiRun" } else { "qel4-$([guid]::NewGuid().ToString('N'))" }
+if ($CiRun -and $LocalCaseRun) { throw 'Choose either CI or a local case run.' }
+$run = if ($CiRun) { "qel4-$CiRun" } elseif ($LocalCaseRun) { "qel4-$LocalCaseRun" } else { "qel4-$([guid]::NewGuid().ToString('N'))" }
 $output = (New-Item -ItemType Directory -Path (Join-Path $root "logs/$run")).FullName
 $nodeImage = 'node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d'
 $zapImage = 'ghcr.io/zaproxy/zaproxy:2.17.0@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af'
@@ -167,7 +170,7 @@ try {
     if ($scanRequired) { $null = Docker @('pull',$zapImage) }
     $nodeVersion = (Docker @('run','--rm','--pull','never','--network','none',$nodeImage,'node','--version')).lines[0]
     $npmVersion = (Docker @('run','--rm','--pull','never','--network','none',$nodeImage,'npm','--version')).lines[0]
-    if ($CiRun) {
+    if ($CiRun -or $LocalCaseRun) {
         @{ node = $nodeVersion; npm = $npmVersion; nodeImage = $nodeImage; zapImage = $zapImage } |
             ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'versions.json')
     }
@@ -197,9 +200,15 @@ try {
                 $lab.Labels['com.docker.compose.network'] -ceq 'lab' -and $lab.Containers.Count -eq 1 -and
                 $detail.id -in $lab.Containers.Keys -and $detail.project -ceq $project -and $detail.health -ceq 'healthy') "Owned healthy SUT for $profile"
             $path = Join-Path $folder 'http-csp.json'
+            $startedAt = [DateTime]::UtcNow.ToString('o')
             $check = Docker @('run','--rm','--pull','never','--network',$lab.Id,'--mount',$sourceMount,$nodeImage,'node','/qel/scope.mjs','csp') -Save $path -AllowFailure
             if ($CiRun) {
                 @{ nativeExit = $check.code; sut = $detail; networkId = $lab.Id } |
+                    ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $folder 'http-invocation.json')
+            }
+            if ($LocalCaseRun) {
+                @{ nativeExit = $check.code; sut = $detail; networkId = $lab.Id; startedAt = $startedAt
+                    run = $run; project = $project; profile = $profile; revision = $revision } |
                     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $folder 'http-invocation.json')
             }
             $cspResults[$profile] = Evidence csp $path $check.code (Join-Path $folder 'csp-result.json')
