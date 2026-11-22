@@ -1,0 +1,27 @@
+services:
+  sut:
+    build: ./sut
+    init: true
+    environment:
+      LAB_DELAY_MS: ${LAB_DELAY_MS-0}
+      LAB_A11Y_DEFECT: ${LAB_A11Y_DEFECT-false}
+      LAB_SECURITY_DEFECT: ${LAB_SECURITY_DEFECT-false}
+    networks:
+      - lab
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/health', { signal: AbortSignal.timeout(1500) })
+          .then(async response => {
+            if (response.status !== 200 || (await response.json()).status !== 'ready') throw Error('not ready');
+          }).catch(error => { console.error(error); process.exitCode = 1; });
+      interval: 2s
+      timeout: 2s
+      retries: 5
+
+networks:
+  lab:
+    internal: true
